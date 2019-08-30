@@ -17,10 +17,12 @@ import logging
 from os import path
 import shutil
 import sys
+import traceback
 import urlparse
 
 import git
 import github
+import requests
 
 TODAY = str(datetime.date.today())
 
@@ -108,10 +110,14 @@ def create_pr(source_repo, branch, repo, g):
     r = g.get_repo(repo)
     u = g.get_user()
     logging.info("Creating a pull request")
-    r.create_pull(title="Rebase %s from "
-                        "%s" % (repo, source_repo),
-                  head="%s:%s" % (u.login, branch), base="master",
-                  maintainer_can_modify=True, body="")
+    p = r.create_pull(title="Rebase %s from %s" % (repo, source_repo),
+                      head="%s:%s" % (u.login, branch), base="master",
+                      maintainer_can_modify=True, body="")
+    return p.html_url
+
+
+def message_slack(webhook_url, msg):
+    requests.post(webhook_url, json={"text": msg})
 
 
 def main():
@@ -124,10 +130,15 @@ def main():
     working_dir = sys.argv[4]
     ssh_key_path = sys.argv[5]
     gh_token_path = sys.argv[6]
+    slack_webhook_path = sys.argv[7]
 
     file = open(gh_token_path, "r")
     gh_token = file.read()
     gh_token = gh_token.strip()
+
+    file = open(slack_webhook_path, "r")
+    slack_webhook_url = file.read()
+    slack_webhook_url = slack_webhook_url.strip()
 
     try:
         g = login_to_github(gh_token)
@@ -135,16 +146,27 @@ def main():
         repo, fork_remote = fetch_and_merge(source_repo, dest_repo, fork_repo,
                                             working_dir, g)
         if repo is None:
+            message_slack(
+                slack_webhook_url,
+                "I tried creating a rebase PR but everything seems up to "
+                "date! Have a great day team!")
             exit(0)
         pr_branch_name = push(repo, fork_remote, ssh_key_path)
 
         gh_repo = urlparse.urlparse(dest_repo).path.strip("/")
-        create_pr(source_repo, pr_branch_name, gh_repo, g)
+        pr_url = create_pr(source_repo, pr_branch_name, gh_repo, g)
     except Exception:
         logging.exception("Error!")
 
-        # TODO(dulek): Message us somehow.
+        message_slack(
+            slack_webhook_url,
+            "I tried creating a rebase PR but ended up with "
+            "error: %s. Merge conflict?" % traceback.format_exc())
+
         exit(1)
+
+    message_slack(slack_webhook_url, "I created a rebase PR: %s. Have "
+                                     "a good one!" % pr_url)
 
 
 if __name__ == "__main__":

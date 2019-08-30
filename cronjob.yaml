@@ -23,7 +23,8 @@ spec:
                 https://opendev.org/openstack/kuryr-kubernetes \
                 https://github.com/openshift/kuryr-kubernetes \
                 git@github.com:kuryr-bot/kuryr-kubernetes \
-                /tmp /credentials/gh-key /credentials/gh-token
+                /tmp /credentials/gh-key /credentials/gh-token \
+                /credentials/slack-webhook
             volumeMounts:
             - name: script
               mountPath: /script
