@@ -18,7 +18,9 @@ from os import path
 import shutil
 import sys
 import traceback
-import urlparse
+from urllib.parse import urlparse
+import argparse
+import validators
 
 import git
 import github
@@ -26,6 +28,38 @@ import requests
 
 TODAY = str(datetime.date.today())
 
+
+# validate_cli_arguments returns a list strings containing all validation errors in the cli arguments
+def validate_cli_arguments(cli_args):
+    validation_errors = []
+    if not validators.url(cli_args.source_repo[0]):
+        validation_errors.append("the value for `--source-repo`, {0}, is not a valid URL".format(cli_args.source_repo[0]))
+    if not validators.url(cli_args.dest_repo[0]):
+        validation_errors.append("the value for `--dest-repo`, {0}, is not a valid URL".format(cli_args.dest_repo[0]))
+
+    return validation_errors
+
+
+# parse_cli_arguments parses command line arguments using argparse and returns an object representing the populated namespace, and a list of errors
+# testing_args should be left empty, except for during testing
+def parse_cli_arguments(testing_args=[]):
+    parser = argparse.ArgumentParser(description='Merge changes from an upstream repo')
+    parser.add_argument('--source-repo', '-s', type=str, nargs=1, required=True, help='The git URL of the source/upstream github repo you want to merge changes from.')
+    parser.add_argument('--dest-repo', '-d', type=str, nargs=1, required=True, help='The git URL of the destination/downstream github repo you want to merge changes into.')
+    parser.add_argument('--fork-repo', '-f', type=str, nargs=1, required=True, help='The git ssh address of the repo the bot will fork the code in to create a pull request.')
+    parser.add_argument('--working-dir', type=str, nargs=1, required=True, help='The working directory where the git repos will be cloned.')
+    parser.add_argument('--github-token', type=str, nargs=1, required=True, help='The path to a github token the bot will use to make a pull request.')
+    parser.add_argument('--github-key', type=str, nargs=1, required=True, help='The path to a github key the bot will use to make a pull request.')
+    parser.add_argument('--slack-webhook', type=str, nargs=1, required=True, help='The path where credentials for the slack webhook are.')
+
+    args = None
+    if testing_args:
+        args = parser.parse_args(testing_args)
+    else:
+        args = parser.parse_args()
+
+    errors = validate_cli_arguments(args)
+    return args, errors
 
 def check_conflict(repo):
     unmerged_blobs = repo.index.unmerged_blobs()
@@ -124,13 +158,20 @@ def main():
     logging.basicConfig(format='%(levelname)s - %(message)s',
                         stream=sys.stdout, level=logging.DEBUG)
 
-    source_repo = sys.argv[1]
-    dest_repo = sys.argv[2]
-    fork_repo = sys.argv[3]
-    working_dir = sys.argv[4]
-    ssh_key_path = sys.argv[5]
-    gh_token_path = sys.argv[6]
-    slack_webhook_path = sys.argv[7]
+    args = parse_cli_arguments()
+    errors = validate_cli_arguments(args)
+    if errors:
+        for error in errors:
+            logging.error(error)
+        exit(1)
+
+    source_repo = args.source_repo[0]
+    dest_repo = args.dest_repo[0]
+    fork_repo = args.fork_repo[0]
+    working_dir = args.working_dir[0]
+    ssh_key_path = args.github_key[0]
+    gh_token_path = args.github_token[0]
+    slack_webhook_path = args.slack_webhook[0]
 
     file = open(gh_token_path, "r")
     gh_token = file.read()

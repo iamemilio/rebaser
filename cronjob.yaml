@@ -20,11 +20,13 @@ spec:
               #!/bin/bash
               set -ex
               python /script/rebaser.py  \
-                https://opendev.org/openstack/kuryr-kubernetes \
-                https://github.com/openshift/kuryr-kubernetes \
-                git@github.com:kuryr-bot/kuryr-kubernetes \
-                /tmp /credentials/gh-key /credentials/gh-token \
-                /credentials/slack-webhook
+                --source-repo https://opendev.org/openstack/kuryr-kubernetes \
+                --dest-repo https://github.com/openshift/kuryr-kubernetes \
+                --fork-repo git@github.com:kuryr-bot/kuryr-kubernetes \
+                --working-dir /tmp \
+                --github-key /credentials/gh-key \
+                --github-token /credentials/gh-token \
+                --slack-webhook /credentials/slack-webhook
             volumeMounts:
             - name: script
               mountPath: /script
