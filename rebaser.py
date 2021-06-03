@@ -15,6 +15,7 @@
 import datetime
 import logging
 from os import path
+import os
 import shutil
 import sys
 import traceback
@@ -51,6 +52,7 @@ def parse_cli_arguments(testing_args=[]):
     parser.add_argument('--github-token', type=str, nargs=1, required=True, help='The path to a github token the bot will use to make a pull request.')
     parser.add_argument('--github-key', type=str, nargs=1, required=True, help='The path to a github key the bot will use to make a pull request.')
     parser.add_argument('--slack-webhook', type=str, nargs=1, required=True, help='The path where credentials for the slack webhook are.')
+    parser.add_argument('--update-go-modules', action='store_true', required=False, help='When enabled, the bot will update and vendor the go modules in a separate commit')
 
     args = None
     if testing_args:
@@ -117,6 +119,26 @@ def fetch_and_merge(source, dest, fork, working_dir, g):
 
     return repo, fork_remote
 
+def message_slack(webhook_url, msg):
+    requests.post(webhook_url, json={"text": msg})
+
+def commit_go_mod_updates(repo):
+    try:
+        os.system("go mod tidy")
+        os.system("go mod vendor")
+    except Exception as err:
+        err.extra_info = "Unable to update go modules"
+        raise err
+
+    try:
+        repo.git.add(all=True)
+        repo.git.commit('-m', "Updating and vendoring go modules after an upstream merge.")
+    except Exception as err:
+        err.extra_info = "Unable to commit go module changes in git"
+        raise err
+
+    return
+
 
 def push(repo, fork_remote, ssh_key_path):
     name = "rebase-%s" % TODAY
@@ -148,11 +170,6 @@ def create_pr(source_repo, branch, repo, g):
                       head="%s:%s" % (u.login, branch), base="master",
                       maintainer_can_modify=True, body="")
     return p.html_url
-
-
-def message_slack(webhook_url, msg):
-    requests.post(webhook_url, json={"text": msg})
-
 
 def main():
     logging.basicConfig(format='%(levelname)s - %(message)s',
@@ -186,6 +203,10 @@ def main():
 
         repo, fork_remote = fetch_and_merge(source_repo, dest_repo, fork_repo,
                                             working_dir, g)
+
+        if args.update_go_modules:
+            commit_go_mod_updates(repo)
+
         if repo is None:
             message_slack(
                 slack_webhook_url,
